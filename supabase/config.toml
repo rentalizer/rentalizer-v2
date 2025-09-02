@@ -1,0 +1,43 @@
+
+project_id = "bmemylmcbmrieheutktb"
+
+[auth]
+# Use the production domain
+site_url = "https://rentalizer.ai"
+additional_redirect_urls = [
+  "https://rentalizer.ai/reset-password",
+  "https://rentalizer.ai/**",
+  "https://inspiring-genie-a1691.lovable.app",
+  "https://inspiring-genie-a1691.lovable.app/reset-password",
+  "https://inspiring-genie-a1691.lovable.app/**",
+  "http://localhost:3000",
+  "http://localhost:3000/reset-password",
+  "http://localhost:3000/**"
+]
+
+[auth.email]
+# Enable email confirmations in production
+enable_confirmations = true
+
+[local_development]
+# Keep localhost for local development
+site_url = "http://localhost:3000"
+additional_redirect_urls = [
+  "http://localhost:3000/reset-password",
+  "http://localhost:3000/**"
+]
+
+[functions.community-notification]
+verify_jwt = true
+
+[functions.send-event-reminder]
+verify_jwt = true
+
+[functions.check-event-reminders]
+verify_jwt = false
+
+[functions.speech-to-text]
+verify_jwt = true
+
+[functions.text-to-speech]
+verify_jwt = true
