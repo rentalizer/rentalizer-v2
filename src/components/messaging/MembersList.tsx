@@ -57,6 +57,7 @@ export default function MembersList({
     return a.name.localeCompare(b.name);
   });
 
+  //james
   return (
     <div className="w-80 bg-slate-800/90 border-l-2 border-border flex flex-col h-full">
       {/* Header */}
