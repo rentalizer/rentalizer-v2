@@ -1,7 +1,7 @@
 // Extend Window interface for Calendly
 declare global {
   interface Window {
-    Calendly: unknown;
+    Calendly?: unknown;
   }
 }
 
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart3, ArrowRight, LogIn, MapPin, Building, DollarSign, Users, TrendingUp, Calculator, Search, Home, Brain, Target, MessageSquare, Calendar as CalendarIcon, Star, X, Video, FileText, Bot, LogOut } from 'lucide-react';
+import { BarChart3, ArrowRight, LogIn, MapPin, Building, DollarSign, Users, TrendingUp, Calculator, Search, Home, Brain, Target, MessageSquare, Calendar as CalendarIcon, Star, X, Video, FileText, Bot, LogOut, Shield } from 'lucide-react';
 import { LoginDialog } from '@/components/LoginDialog';
 import { Footer } from '@/components/Footer';
 import { MarketIntelligenceDemo } from '@/components/MarketIntelligenceDemo';
@@ -165,20 +165,7 @@ const LandingPage = () => {
                     Sign Out
                   </Button>
                 </div>
-              ) : (
-                <LoginDialog 
-                  trigger={
-                    <Button 
-                      variant="outline"
-                      size="lg"
-                      className="border-cyan-500/30 hover:bg-cyan-500/10 text-cyan-300 hover:text-cyan-200 px-6 py-3"
-                    >
-                      <LogIn className="h-4 w-4 mr-2" />
-                      Login
-                    </Button>
-                  }
-                />
-              )}
+              ) : null}
             </nav>
           </div>
         </div>
@@ -219,6 +206,41 @@ const LandingPage = () => {
             </div>
 
 
+          </div>
+
+          {/* Distinct Entry Points: User vs Admin */}
+          <div className="mb-16">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Button
+                onClick={() => {
+                  if (user) {
+                    navigate('/dashboard');
+                  } else {
+                    navigate('/dashboard?redirect=/dashboard');
+                  }
+                }}
+                size="lg"
+                className="bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-500/30 px-8 py-6"
+              >
+                <LogIn className="h-5 w-5 mr-2" />
+                Enter App
+              </Button>
+              <Button
+                onClick={() => {
+                  if (user) {
+                    navigate('/admin');
+                  } else {
+                    navigate('/dashboard?redirect=/admin');
+                  }
+                }}
+                variant="outline"
+                size="lg"
+                className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 px-8 py-6"
+              >
+                <Shield className="h-5 w-5 mr-2" />
+                Admin Console
+              </Button>
+            </div>
           </div>
 
           {/* Animated Features Section */}

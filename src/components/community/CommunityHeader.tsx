@@ -5,10 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
-import { Paperclip, Image, Video, Smile, AtSign, X, Check, AlertCircle, Play, Pause } from 'lucide-react';
+import { Paperclip, Image, Video, Smile, X, Check, AlertCircle, Play, Pause } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAdminRole } from '@/hooks/useAdminRole';
+import { useNavigate } from 'react-router-dom';
 
 interface CommunityHeaderProps {
   onPostCreated: () => void;
@@ -44,6 +46,8 @@ interface PhotoUpload {
 export const CommunityHeader: React.FC<CommunityHeaderProps> = ({ onPostCreated, isDayMode = false }) => {
   const { user, profile } = useAuth();
   const { toast } = useToast();
+  const { isAdmin } = useAdminRole();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -1022,6 +1026,20 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({ onPostCreated,
                       )}
                     </Button>
                   </div>
+
+                  {isAdmin && (
+                    <div className="relative">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+                        onClick={() => navigate('/admin/discussions')}
+                        title="Open Discussions Admin"
+                      >
+                        Admin
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 
                 <Button

@@ -37,12 +37,14 @@ import AdminMembers from "./pages/AdminMembers";
 import Members from "./pages/Members";
 import ProfileSetup from "./pages/ProfileSetup";
 import RichieAdmin from "./pages/RichieAdmin";
+import AdminDiscussions from "./pages/AdminDiscussions";
 import LogoDownload from "./pages/LogoDownload";
 import TestLogo from "./pages/TestLogo";
 import GuideBook from "./pages/GuideBook";
 import GuideBook2 from "./pages/GuideBook2";
 import GuestGuide from "./pages/GuestGuide";
 import { Auth } from "./pages/Auth";
+import AdminHub from "./pages/AdminHub";
 
 const queryClient = new QueryClient();
 
@@ -66,8 +68,13 @@ const AppRoutes = () => (
     <Route path="/leaderboard" element={<FullLeaderboard />} />
     <Route path="/pms" element={<PMS />} />
     <Route path="/student_log" element={<StudentLog />} />
-    <Route path="/admin/members" element={<AdminMembers />} />
-    <Route path="/admin/richie" element={<RichieAdmin />} />
+    {/* Admin Hub - consolidated admin UI with nested routes */}
+    <Route path="/admin" element={<AdminHub />}>
+      <Route index element={<AdminMembers />} />
+      <Route path="members" element={<AdminMembers />} />
+      <Route path="discussions" element={<AdminDiscussions />} />
+      <Route path="richie" element={<RichieAdmin />} />
+    </Route>
     <Route path="/members" element={<Members />} />
     <Route path="/profile-setup" element={<ProfileSetup />} />
     <Route path="/auth" element={<Auth />} />

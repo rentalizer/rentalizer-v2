@@ -2,13 +2,13 @@
 // Extend Window interface for Calendly
 declare global {
   interface Window {
-    Calendly: unknown;
+    Calendly?: unknown;
   }
 }
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Footer } from '@/components/Footer';
 import { TopNavBar } from '@/components/TopNavBar';
 import { WelcomeSection } from '@/components/WelcomeSection';
@@ -20,11 +20,15 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Eye, EyeOff, BarChart3, Calendar } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const Index = () => {
   const { user, signIn, signUp, isLoading } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || null;
+  const isAdminLogin = !!redirectTo && redirectTo.startsWith('/admin');
   const [showPassword, setShowPassword] = useState(false);
   
   // Login form state
@@ -80,11 +84,52 @@ const Index = () => {
     setLoginLoading(true);
 
     try {
+      // If this is an admin-only login flow, verify the email has admin role before attempting sign-in
+      if (isAdminLogin) {
+        const email = loginEmail.trim().toLowerCase();
+        // Look up user id by email
+        const { data: userProfile, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle();
+
+        if (profileError) {
+          console.warn('Admin pre-check: profile lookup error or RLS blocked. Falling back to normal sign-in.');
+        }
+
+        // Only block if we POSITIVELY found the user and confirmed they are NOT an admin
+        if (userProfile?.id) {
+          const { data: roles, error: rolesError } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', userProfile.id)
+            .eq('role', 'admin');
+
+          if (rolesError) {
+            console.warn('Admin pre-check: roles lookup error or RLS blocked. Falling back to normal sign-in.');
+          }
+
+          if (roles && roles.length === 0) {
+            toast({
+              title: 'Admins only',
+              description: 'This email does not have admin access.',
+              variant: 'destructive'
+            });
+            return;
+          }
+        }
+        // If profile not found or queries blocked, proceed to normal sign-in.
+      }
+
       await signIn(loginEmail, loginPassword);
       toast({
         title: "Welcome back!",
         description: "You have been signed in successfully"
       });
+      if (redirectTo) {
+        navigate(redirectTo);
+      }
     } catch (error) {
       console.error('Login error:', error);
       toast({
@@ -151,6 +196,11 @@ const Index = () => {
 
   // If user is logged in, show welcome page with TopNavBar
   if (user) {
+    // If a redirect target is present, honor it first
+    if (redirectTo) {
+      navigate(redirectTo);
+      return null;
+    }
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black">
         <TopNavBar />
@@ -237,17 +287,9 @@ const Index = () => {
           <p className="text-gray-400">Join our vibrant community of rental entrepreneurs</p>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="login" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-2 bg-slate-700/50">
-              <TabsTrigger value="login" className="text-gray-300 data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
-                Login
-              </TabsTrigger>
-              <TabsTrigger value="signup" className="text-gray-300 data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
-                Sign Up
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="login">
+          {isAdminLogin ? (
+            // Admin login view: show only the Login form (no Sign Up)
+            <div className="space-y-4">
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="login-email" className="text-gray-300">Email</Label>
@@ -290,93 +332,135 @@ const Index = () => {
                   {loginLoading ? 'Signing in...' : 'Sign In'}
                 </Button>
               </form>
-            </TabsContent>
+            </div>
+          ) : (
+            <Tabs defaultValue="login" className="space-y-4">
+              <TabsList className="grid w-full grid-cols-2 bg-slate-700/50">
+                <TabsTrigger value="login" className="text-gray-300 data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
+                  Login
+                </TabsTrigger>
+                <TabsTrigger value="signup" className="text-gray-300 data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
+                  Sign Up
+                </TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="signup">
-              <form onSubmit={handleSignup} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="display-name" className="text-gray-300">Your Name</Label>
-                  <Input
-                    id="display-name"
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="bg-slate-700/50 border-cyan-500/20 text-white"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email" className="text-gray-300">Email</Label>
-                  <Input
-                    id="signup-email"
-                    type="email"
-                    value={signupEmail}
-                    onChange={(e) => setSignupEmail(e.target.value)}
-                    className="bg-slate-700/50 border-cyan-500/20 text-white"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password" className="text-gray-300">Password</Label>
-                  <div className="relative">
+              <TabsContent value="login">
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="login-email" className="text-gray-300">Email</Label>
                     <Input
-                      id="signup-password"
-                      type={showPassword ? "text" : "password"}
-                      value={signupPassword}
-                      onChange={(e) => setSignupPassword(e.target.value)}
-                      className="bg-slate-700/50 border-cyan-500/20 text-white pr-10"
+                      id="login-email"
+                      type="email"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      className="bg-slate-700/50 border-cyan-500/20 text-white"
                       required
-                      minLength={6}
                     />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
                   </div>
-                  <p className="text-xs text-gray-400">Password must be at least 6 characters long</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="promo-code" className="text-gray-300">Promo Code</Label>
-                  <Input
-                    id="promo-code"
-                    type="text"
-                    value={promoCode}
-                    onChange={(e) => setPromoCode(e.target.value)}
-                    className="bg-slate-700/50 border-cyan-500/20 text-white"
-                    required
-                  />
-                </div>
-                
-                <Button
-                  type="submit"
-                  disabled={signupLoading}
-                  className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
-                >
-                  {signupLoading ? 'Creating account...' : 'Create Account'}
-                </Button>
-              </form>
-            </TabsContent>
-          </Tabs>
+                  <div className="space-y-2">
+                    <Label htmlFor="login-password" className="text-gray-300">Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="login-password"
+                        type={showPassword ? "text" : "password"}
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        className="bg-slate-700/50 border-cyan-500/20 text-white pr-10"
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={loginLoading}
+                    className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
+                  >
+                    {loginLoading ? 'Signing in...' : 'Sign In'}
+                  </Button>
+                </form>
+              </TabsContent>
+
+              <TabsContent value="signup">
+                <form onSubmit={handleSignup} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="display-name" className="text-gray-300">Your Name</Label>
+                    <Input
+                      id="display-name"
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      className="bg-slate-700/50 border-cyan-500/20 text-white"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-email" className="text-gray-300">Email</Label>
+                    <Input
+                      id="signup-email"
+                      type="email"
+                      value={signupEmail}
+                      onChange={(e) => setSignupEmail(e.target.value)}
+                      className="bg-slate-700/50 border-cyan-500/20 text-white"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password" className="text-gray-300">Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="signup-password"
+                        type={showPassword ? "text" : "password"}
+                        value={signupPassword}
+                        onChange={(e) => setSignupPassword(e.target.value)}
+                        className="bg-slate-700/50 border-cyan-500/20 text-white pr-10"
+                        required
+                        minLength={6}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-400">Password must be at least 6 characters long</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="promo-code" className="text-gray-300">Promo Code</Label>
+                    <Input
+                      id="promo-code"
+                      type="text"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value)}
+                      className="bg-slate-700/50 border-cyan-500/20 text-white"
+                      required
+                    />
+                  </div>
+                  
+                  <Button
+                    type="submit"
+                    disabled={signupLoading}
+                    className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
+                  >
+                    {signupLoading ? 'Creating account...' : 'Create Account'}
+                  </Button>
+                </form>
+              </TabsContent>
+            </Tabs>
+          )}
           
-          {/* Book A Demo Button - Prominent placement */}
-          <div className="mt-6 pt-4 border-t border-gray-700/50">
-            <Button
-              onClick={handleBookDemo}
-              variant="outline"
-              className="w-full border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-400"
-            >
-              <Calendar className="h-4 w-4 mr-2" />
-              Book A Demo
-            </Button>
-            <p className="text-xs text-gray-400 mt-2 text-center">
-              Schedule a 1-on-1 demo call
-            </p>
-          </div>
           
           <div className="mt-4 text-center">
             <p className="text-xs text-gray-400">

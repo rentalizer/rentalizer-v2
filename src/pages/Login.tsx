@@ -21,6 +21,7 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const redirectTo = searchParams.get('redirect') || '/dashboard';
+  const isAdminLogin = redirectTo.startsWith('/admin');
 
   // Redirect if already logged in
   useEffect(() => {
@@ -107,7 +108,7 @@ const Login = () => {
         <Card className="bg-slate-700/90 backdrop-blur-lg border border-gray-500/50">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl text-cyan-300 flex items-center justify-center gap-2">
-              {showCalendar ? (
+              {!isAdminLogin && showCalendar ? (
                 <>
                   <Calendar className="h-6 w-6" />
                   Schedule a Demo
@@ -120,14 +121,14 @@ const Login = () => {
               )}
             </CardTitle>
             <p className="text-gray-400">
-              {showCalendar 
+              {!isAdminLogin && showCalendar 
                 ? "Book a demo to learn more about Rentalizer's features"
                 : "Sign in to access the calculator"
               }
             </p>
           </CardHeader>
           <CardContent>
-            {showCalendar ? (
+            {!isAdminLogin && showCalendar ? (
               <div className="space-y-4">
                 <div className="bg-cyan-900/20 border border-cyan-500/30 rounded-lg p-4">
                   <p className="text-cyan-200 text-sm">
@@ -208,18 +209,20 @@ const Login = () => {
                   )}
                 </Button>
 
-                <div className="text-center pt-4">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={handleCreateAccount}
-                    disabled={isSubmitting}
-                    className="text-cyan-300 hover:text-cyan-200 hover:bg-cyan-500/10"
-                  >
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Create an Account
-                  </Button>
-                </div>
+                {!isAdminLogin && (
+                  <div className="text-center pt-4">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={handleCreateAccount}
+                      disabled={isSubmitting}
+                      className="text-cyan-300 hover:text-cyan-200 hover:bg-cyan-500/10"
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Create an Account
+                    </Button>
+                  </div>
+                )}
               </form>
             )}
           </CardContent>
@@ -227,6 +230,7 @@ const Login = () => {
       </div>
     </div>
   );
+
 };
 
 export default Login;

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 // Extend Window interface for Calendly
 declare global {
   interface Window {
-    Calendly: unknown;
+    Calendly?: unknown;
   }
 }
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,7 +52,7 @@ interface UserProfile {
   last_name: string | null;
 }
 
-export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean }) => {
+export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, forceTagLabel, authorFilter, titleLinkOverrides, skoolLinkOverrides, allowAdminPinAll = false, adminCanPin = false, pinScope = 'global' }: { isDayMode?: boolean; disablePosting?: boolean; forceTagLabel?: string; authorFilter?: string; titleLinkOverrides?: Record<string, string>; skoolLinkOverrides?: Record<string, string>; allowAdminPinAll?: boolean; adminCanPin?: boolean; pinScope?: 'global' | 'author' }) => {
   const { user, profile } = useAuth();
   const { isAdmin } = useAdminRole();
   const { toast } = useToast();
@@ -249,9 +249,42 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
     const pinnedCount = discussionsList.filter(d => d.isPinned).length;
     console.log('📌 Pinned posts:', pinnedCount, 'Regular posts:', discussionsList.length - pinnedCount);
     console.log('📌 First 3 posts order:', discussionsList.slice(0, 3).map(d => ({ title: d.title.substring(0, 30), isPinned: d.isPinned })));
-    
-    return discussionsList; // Already sorted from database
-  }, [discussionsList]);
+
+    // Base list is already sorted from the database
+    let list = discussionsList;
+
+    // Apply author filter if provided (case-insensitive)
+    const query = (authorFilter || '').trim().toLowerCase();
+    if (query) {
+      list = list.filter(d => {
+        const authorRaw = (d.author || '').toLowerCase();
+        // Consider linked profile display name if available
+        const prof = d.user_id ? userProfiles[d.user_id] : undefined;
+        const display = (prof?.display_name || '').toLowerCase();
+        return authorRaw.includes(query) || display.includes(query);
+      });
+    }
+
+    // Apply pin scope ordering for non-admin user views if needed
+    if (pinScope === 'author' && user && !isAdmin) {
+      const score = (d: Discussion) => (d.isPinned && d.user_id === user.id ? 1 : 0);
+      list = [...list].sort((a, b) => {
+        const s = score(b) - score(a);
+        if (s !== 0) return s;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+    }
+
+    return list;
+  }, [discussionsList, authorFilter, userProfiles, pinScope, user, isAdmin]);
+
+  // Control visibility of the pinned icon/badge based on pinScope
+  const isPinnedVisible = useCallback((d: Discussion) => {
+    if (pinScope === 'author' && user && !isAdmin) {
+      return !!d.isPinned && d.user_id === user.id;
+    }
+    return !!d.isPinned;
+  }, [pinScope, user, isAdmin]);
 
   const handleLike = useCallback((discussionId: string) => {
     setDiscussionsList(prev => prev.map(discussion => 
@@ -291,7 +324,7 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
   }, [newComment, selectedDiscussion, getUserName, getUserInitials]);
 
   const handlePinToggle = useCallback(async (discussionId: string) => {
-    if (!isAdmin) {
+    if (!(isAdmin || adminCanPin)) {
       return;
     }
 
@@ -302,15 +335,38 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
 
     try {
       const newPinnedStatus = !discussion.isPinned;
-      
+
+      // Optimistic UI update so the badge/icon turns yellow immediately and item moves to top
+      const sorter = (a: Discussion, b: Discussion) => {
+        // In author scope for non-admins, only prioritize the current user's pinned posts
+        if (pinScope === 'author' && user && !isAdmin) {
+          const aScore = a.isPinned && a.user_id === user.id ? 1 : 0;
+          const bScore = b.isPinned && b.user_id === user.id ? 1 : 0;
+          const delta = bScore - aScore;
+          if (delta !== 0) return delta;
+        } else {
+          const pinDelta = (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
+          if (pinDelta !== 0) return pinDelta;
+        }
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      };
+      const prevState = discussionsList;
+      setDiscussionsList(prev => {
+        const updated = prev.map(d => d.id === discussionId ? { ...d, isPinned: newPinnedStatus } : d);
+        return [...updated].sort(sorter);
+      });
+
       // Update database first
-      const { error } = await supabase
+      const { data: updatedRows, error } = await supabase
         .from('discussions')
         .update({ is_pinned: newPinnedStatus })
-        .eq('id', discussionId);
+        .eq('id', discussionId)
+        .select('id, is_pinned');
 
       if (error) {
         console.error('❌ Error updating pin status:', error);
+        // Rollback optimistic update on error
+        setDiscussionsList(prevState);
         toast({
           title: "Error",
           description: "Failed to update pin status",
@@ -319,8 +375,18 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
         return;
       }
 
-      // Refresh the discussions list to get proper sorting
-      await fetchDiscussions();
+      if (!updatedRows || updatedRows.length === 0) {
+        console.warn('⚠️ No rows updated when toggling pin — possible RLS/permissions issue');
+        setDiscussionsList(prevState);
+        toast({
+          title: "Pin Not Saved",
+          description: "Your account may not have permission to pin this post.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Keep optimistic state; no immediate refetch to avoid flashing/reverting UI
 
       toast({
         title: newPinnedStatus ? "Post Pinned" : "Post Unpinned",
@@ -338,7 +404,7 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
         variant: "destructive"
       });
     }
-  }, [isAdmin, discussionsList, toast, fetchDiscussions]);
+  }, [isAdmin, adminCanPin, discussionsList, toast, pinScope, user]);
 
   const handleDeleteDiscussion = useCallback(async (discussionId: string) => {
     try {
@@ -411,9 +477,11 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
   }, [isAdmin, user]);
 
   const canPin = useCallback((discussion: Discussion) => {
-    // Only admins can pin/unpin posts AND the post must be from an admin
-    return isAdmin && isAdminPost(discussion);
-  }, [isAdmin, isAdminPost]);
+    // Admins can pin/unpin posts. By default only admin-authored posts are pinnable.
+    // If allowAdminPinAll is true, admins can pin any post (used in Admin views).
+    if (!(isAdmin || adminCanPin)) return false;
+    return allowAdminPinAll ? true : isAdminPost(discussion);
+  }, [isAdmin, isAdminPost, allowAdminPinAll, adminCanPin]);
 
   const getTruncatedContent = useCallback((content: string, maxLength: number = 150) => {
     if (content.length <= maxLength) return content;
@@ -444,12 +512,21 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
           )}
           
           {/* Header with Post Input */}
-          <CommunityHeader onPostCreated={handlePostCreated} isDayMode={isDayMode} />
+          {disablePosting ? null : (
+            <CommunityHeader onPostCreated={handlePostCreated} isDayMode={isDayMode} />
+          )}
 
 
           {/* Discussion Posts */}
           <div className="space-y-4">
-            {filteredDiscussions.map((discussion) => {
+            {filteredDiscussions.length === 0 ? (
+              <Card className="bg-slate-800/50 border-gray-700/50">
+                <CardContent className="p-6 text-center text-gray-400">
+                  No member post
+                </CardContent>
+              </Card>
+            ) : (
+            filteredDiscussions.map((discussion) => {
               const profileInfo = getProfileInfo(discussion.user_id, discussion.author);
               
               return (
@@ -475,28 +552,48 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
                         {/* Header */}
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            {discussion.isPinned && <Pin className="h-4 w-4 text-yellow-400" />}
+                            {isPinnedVisible(discussion) && <Pin className="h-4 w-4 text-yellow-400" />}
                             <span className="text-cyan-300 font-medium">{profileInfo.display_name}</span>
                             <span className="text-gray-400">•</span>
                             <span className="text-gray-400 text-sm">{discussion.timeAgo}</span>
                             <span className="text-gray-400">•</span>
                             <span className="text-gray-400 text-sm">{discussion.category}</span>
-                            {discussion.isPinned && (
+                            {isPinnedVisible(discussion) && (
                               <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30 text-xs ml-2">
                                 Pinned
                               </Badge>
                             )}
                             {discussion.isSkoolHighlight && (
-                              <a
-                                href="https://www.skool.com/creativeairbnb/welcome-aboard"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="Open Skool"
-                              >
-                                <Badge className="bg-cyan-600/20 text-cyan-300 border-cyan-500/30 text-xs ml-2 hover:bg-cyan-600/30">
-                                  Skool
-                                </Badge>
-                              </a>
+                              (() => {
+                                const skoolHref = skoolLinkOverrides?.[discussion.title] || 'https://www.skool.com/creativeairbnb/welcome-aboard';
+                                return (
+                                  <a
+                                    href={skoolHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Open Skool"
+                                  >
+                                    <Badge className="bg-cyan-600/20 text-cyan-300 border-cyan-500/30 text-xs ml-2 hover:bg-cyan-600/30">
+                                      Skool
+                                    </Badge>
+                                  </a>
+                                );
+                              })()
+                            )}
+                            {forceTagLabel && (
+                              (() => {
+                                const href = skoolLinkOverrides?.[discussion.title];
+                                const badge = (
+                                  <Badge className="bg-cyan-600/20 text-cyan-300 border-cyan-500/30 text-xs ml-2">
+                                    {forceTagLabel}
+                                  </Badge>
+                                );
+                                return href ? (
+                                  <a href={href} target="_blank" rel="noopener noreferrer" title="Open Skool">
+                                    {badge}
+                                  </a>
+                                ) : badge;
+                              })()
                             )}
                           </div>
                           
@@ -555,7 +652,22 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
                         </div>
 
                         <h3 className={`text-xl font-semibold mb-3 ${isDayMode ? 'text-slate-700' : 'text-white'}`}>
-                          {discussion.title}
+                          {(() => {
+                            const href = titleLinkOverrides?.[discussion.title];
+                            if (href) {
+                              return (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                                >
+                                  {discussion.title}
+                                </a>
+                              );
+                            }
+                            return discussion.title;
+                          })()}
                         </h3>
 
                         <div 
@@ -663,7 +775,8 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
                   </CardContent>
                 </Card>
               );
-            })}
+            })
+            )}
           </div>
         </div>
       </div>

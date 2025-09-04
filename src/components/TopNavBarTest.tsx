@@ -3,9 +3,21 @@ import { BarChart3, User, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export const TopNavBarTest = () => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const handleSignOut = async () => {
+    await signOut();
+    if (location.pathname.startsWith('/admin')) {
+      navigate('/dashboard?redirect=/admin');
+    } else {
+      navigate('/dashboard?redirect=/dashboard');
+    }
+  };
   
   // Only show user info if it's a real authenticated user (not development mock)
   // Hide development mock user completely
@@ -20,6 +32,12 @@ export const TopNavBarTest = () => {
             <BarChart3 className="h-8 w-8 text-cyan-400" style={{
               filter: 'drop-shadow(0 0 6px rgba(6, 182, 212, 1)) drop-shadow(0 0 12px rgba(6, 182, 212, 0.9)) drop-shadow(0 0 18px rgba(6, 182, 212, 0.8)) drop-shadow(0 0 24px rgba(6, 182, 212, 0.7)) drop-shadow(0 0 30px rgba(6, 182, 212, 0.6)) drop-shadow(0 0 36px rgba(6, 182, 212, 0.5))'
             }} />
+            <span
+              className="hidden sm:inline-block text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-cyan-300 to-purple-400 tracking-tight"
+              style={{ filter: 'drop-shadow(0 0 8px rgba(6, 182, 212, 0.35))' }}
+            >
+              Rentalizer
+            </span>
           </div>
 
           {/* Right side - Login or User info */}
@@ -33,7 +51,7 @@ export const TopNavBarTest = () => {
                 </Badge>
               </div>
               <Button
-                onClick={signOut}
+                onClick={handleSignOut}
                 variant="outline"
                 size="sm"
                 className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 flex items-center gap-2"

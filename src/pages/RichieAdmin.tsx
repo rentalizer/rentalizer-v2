@@ -1,6 +1,4 @@
 import React from 'react';
-import { TopNavBar } from '@/components/TopNavBar';
-import { Footer } from '@/components/Footer';
 import { RichieAdminPanel } from '@/components/RichieAdminPanel';
 import { AdminLeadsPanel } from '@/components/AdminLeadsPanel';
 import { Bot, Database } from 'lucide-react';
@@ -8,8 +6,6 @@ import { Bot, Database } from 'lucide-react';
 const RichieAdmin = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col">
-      <TopNavBar />
-      
       <div className="flex-1 w-full max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="text-center mb-8">
@@ -33,8 +29,6 @@ const RichieAdmin = () => {
           <AdminLeadsPanel />
         </div>
       </div>
-
-      <Footer />
     </div>
   );
 };

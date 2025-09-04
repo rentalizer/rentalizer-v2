@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 // Extend Window interface for Calendly
 declare global {
   interface Window {
-    Calendly: any;
+    Calendly?: unknown;
   }
 }
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -215,14 +215,14 @@ const Community = () => {
   }, []);
 
   const updateCalculatorData = (updates: Partial<CalculatorData>) => {
-    const roundedUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
+    const roundedUpdates = Object.entries(updates).reduce<Record<string, unknown>>((acc, [key, value]) => {
       if (typeof value === 'number') {
         acc[key] = Math.round(value);
       } else {
         acc[key] = value;
       }
       return acc;
-    }, {} as any);
+    }, {} as Record<string, unknown>);
     
     setCalculatorData(prev => ({ ...prev, ...roundedUpdates }));
   };
@@ -362,7 +362,10 @@ const Community = () => {
 
           {/* Other Tabs */}
           <TabsContent value="discussions" className="mt-8">
-            <GroupDiscussions />
+            <GroupDiscussions 
+              disablePosting={userIsAdmin}
+              pinScope={userIsAdmin ? 'global' : 'author'}
+            />
           </TabsContent>
           <TabsContent value="calendar" className="mt-8">
             <CommunityCalendar />

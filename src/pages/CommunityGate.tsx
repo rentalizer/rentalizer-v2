@@ -16,7 +16,7 @@ import Community from './Community';
 // Augment Window to include Calendly so we don't need ts-ignore
 declare global {
   interface Window {
-    Calendly: unknown;
+    Calendly?: unknown;
   }
 }
 

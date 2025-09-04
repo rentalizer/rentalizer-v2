@@ -8,7 +8,18 @@ import { MessageSquare, Users, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import MessageThread, { Message } from './MessageThread';
-import MembersList, { Member } from './MembersList';
+import MessagingMembersList, { Member as MessagingMember } from './MembersList';
+
+// Typed view of the direct_messages table rows we use
+interface DirectMessageRow {
+  id: string;
+  sender_id: string;
+  recipient_id: string;
+  message: string;
+  created_at: string;
+  read_at: string | null;
+  sender_name?: string | null;
+}
 
 interface Conversation {
   id: string;
@@ -23,7 +34,7 @@ export default function AdminSupportMessaging() {
   const { isAdmin } = useAdminRole();
   const { toast } = useToast();
   
-  const [members, setMembers] = useState<Member[]>([]);
+  const [members, setMembers] = useState<MessagingMember[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -31,18 +42,6 @@ export default function AdminSupportMessaging() {
   const [loading, setLoading] = useState(true);
   const [connectingToAdmin, setConnectingToAdmin] = useState(false);
   const [totalUnread, setTotalUnread] = useState(0);
-
-  // Early return check - before any conditional hooks
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center h-64 bg-slate-800/90 rounded-lg">
-        <div className="text-center">
-          <p className="text-white text-lg mb-2">Please log in to access messaging</p>
-          <p className="text-slate-300 text-sm">You need to be authenticated to send and receive messages.</p>
-        </div>
-      </div>
-    );
-  }
 
   // Load members (for admin view)
   useEffect(() => {
@@ -71,7 +70,7 @@ export default function AdminSupportMessaging() {
           .select('user_id, role');
 
         // Load conversations for each member
-        const membersList: Member[] = await Promise.all(
+        const membersList: MessagingMember[] = await Promise.all(
           profiles
             .filter(profile => profile.user_id !== user.id)
             .map(async (profile) => {
@@ -195,7 +194,7 @@ export default function AdminSupportMessaging() {
           return;
         }
 
-        const formattedMessages: Message[] = (data || []).map((msg: any) => ({
+        const formattedMessages: Message[] = (data as DirectMessageRow[] | null || []).map((msg: DirectMessageRow) => ({
           id: msg.id,
           senderId: msg.sender_id,
           receiverId: msg.recipient_id,
@@ -203,7 +202,7 @@ export default function AdminSupportMessaging() {
           timestamp: msg.created_at,
           isRead: !!msg.read_at,
           messageType: 'text',
-          senderName: msg.sender_name
+          senderName: msg.sender_name || undefined
         }));
 
         setMessages(formattedMessages);
@@ -251,7 +250,7 @@ export default function AdminSupportMessaging() {
           filter: `or(sender_id.eq.${user.id},recipient_id.eq.${user.id})`
         },
         (payload) => {
-          const newMessage = payload.new as any;
+          const newMessage = payload.new as DirectMessageRow;
           
           // Only process if it's for current conversation or affects member list
           const isCurrentConversation = selectedMemberId &&
@@ -268,7 +267,7 @@ export default function AdminSupportMessaging() {
               timestamp: newMessage.created_at,
               isRead: !!newMessage.read_at,
               messageType: 'text',
-              senderName: newMessage.sender_name
+              senderName: newMessage.sender_name || undefined
             };
             
             // Only add if not already in state (avoid duplicates)
@@ -306,7 +305,7 @@ export default function AdminSupportMessaging() {
           filter: `or(sender_id.eq.${user.id},recipient_id.eq.${user.id})`
         },
         (payload) => {
-          const updatedMessage = payload.new as any;
+          const updatedMessage = payload.new as DirectMessageRow;
           
           // Update read status in local state
           setMessages(prev => prev.map(msg => 
@@ -508,7 +507,7 @@ export default function AdminSupportMessaging() {
       </div>
 
       {/* Members List */}
-      <MembersList
+      <MessagingMembersList
         members={members}
         selectedMemberId={selectedMemberId}
         onMemberSelect={setSelectedMemberId}
