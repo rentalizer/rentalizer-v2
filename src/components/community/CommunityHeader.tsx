@@ -58,6 +58,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({ onPostCreated,
   const [videoUpload, setVideoUpload] = useState<VideoUpload | null>(null);
   const [photoUpload, setPhotoUpload] = useState<PhotoUpload | null>(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [highlightSkool, setHighlightSkool] = useState(false);
 
   const getUserAvatar = () => profile?.avatar_url || null;
   const getUserName = () => profile?.display_name || user?.email?.split('@')[0] || 'Anonymous User';
@@ -529,6 +530,12 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({ onPostCreated,
         const photoLink = `📸 [${photoUpload.file.name}](${photoUpload.url})`;
         contentWithMedia = `${contentWithMedia}\n\n${photoLink}`;
       }
+
+      // If Skool highlight is enabled, prepend a banner at the top of the content
+      if (highlightSkool) {
+        const banner = `🟦 Skool Highlight\n\n`;
+        contentWithMedia = `${banner}${contentWithMedia}`;
+      }
       
       const { data, error } = await supabase
         .from('discussions')
@@ -559,6 +566,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({ onPostCreated,
       setPhotoUpload(null);
       setUploadSuccess(null);
       setIsVideoPlaying(false);
+      setHighlightSkool(false);
       onPostCreated();
       
     } catch (error) {
@@ -968,6 +976,8 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({ onPostCreated,
                     accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.gif,.mp4,.mp3,.zip,.rar"
                   />
 
+
+
                   <div className="relative">
                     <Button
                       variant="ghost"
@@ -996,6 +1006,21 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({ onPostCreated,
                         </div>
                       </div>
                     )}
+                  </div>
+                  <div className="relative">
+                    {/* Skool highlight toggle */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`${highlightSkool ? 'text-cyan-400 bg-cyan-500/10' : 'text-gray-400'} hover:text-cyan-300`}
+                      onClick={() => setHighlightSkool(prev => !prev)}
+                      title={highlightSkool ? 'Skool highlight enabled' : 'Toggle Skool highlight'}
+                    >
+                      Skool
+                      {highlightSkool && (
+                        <span className="ml-1 text-xs bg-cyan-500 text-white rounded-full w-5 h-5 flex items-center justify-center">✓</span>
+                      )}
+                    </Button>
                   </div>
                 </div>
                 

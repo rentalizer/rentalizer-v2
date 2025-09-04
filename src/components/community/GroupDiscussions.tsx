@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 // Extend Window interface for Calendly
 declare global {
   interface Window {
-    Calendly: any;
+    Calendly: unknown;
   }
 }
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,6 +41,7 @@ interface Discussion {
   isLiked?: boolean;
   user_id?: string;
   isMockData?: boolean;
+  isSkoolHighlight?: boolean;
 }
 
 interface UserProfile {
@@ -130,6 +131,16 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
     }
   }, []);
 
+  const formatTimeAgo = useCallback((dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
+    return `${Math.floor(diffInMinutes / 1440)}d ago`;
+  }, []);
+
   // Fetch discussions from database with proper sorting
   const fetchDiscussions = useCallback(async () => {
     console.log('🔄 Fetching discussions from database...');
@@ -163,7 +174,8 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
         user_id: discussion.user_id,
         isPinned: discussion.is_pinned || false,
         isLiked: false,
-        isMockData: false
+        isMockData: false,
+        isSkoolHighlight: typeof discussion.content === 'string' && discussion.content.startsWith('🟦 Skool Highlight')
       }));
 
       console.log('✅ Formatted discussions:', formattedDiscussions.length);
@@ -172,23 +184,15 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
     } catch (error) {
       console.error('❌ Exception fetching discussions:', error);
     }
-  }, [getInitials]);
+  }, [getInitials, formatTimeAgo]);
 
-  const formatTimeAgo = useCallback((dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
-    
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
-    return `${Math.floor(diffInMinutes / 1440)}d ago`;
-  }, []);
+  // formatTimeAgo is defined above fetchDiscussions
 
   // Initialize data - ONLY fetch once on mount
   useEffect(() => {
     fetchUserProfiles();
     fetchDiscussions();
-  }, []); // Empty dependency array - only run once on mount
+  }, [fetchUserProfiles, fetchDiscussions]);
 
   // Fixed profile info function - this was the source of the bug
   const getProfileInfo = useCallback((userId: string | undefined, authorName: string) => {
@@ -396,7 +400,7 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
         variant: "destructive"
       });
     }
-  }, [toast, user?.id, isAdmin, discussionsList.length]);
+  }, [toast]);
 
   const canEditOrDelete = useCallback((discussion: Discussion) => {
     // Admins can edit/delete any post
@@ -482,6 +486,18 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
                                 Pinned
                               </Badge>
                             )}
+                            {discussion.isSkoolHighlight && (
+                              <a
+                                href="https://www.skool.com/creativeairbnb/welcome-aboard"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Open Skool"
+                              >
+                                <Badge className="bg-cyan-600/20 text-cyan-300 border-cyan-500/30 text-xs ml-2 hover:bg-cyan-600/30">
+                                  Skool
+                                </Badge>
+                              </a>
+                            )}
                           </div>
                           
                           {/* Pin Icon and Options Menu */}
@@ -548,7 +564,12 @@ export const GroupDiscussions = ({ isDayMode = false }: { isDayMode?: boolean })
                           }`}
                           onClick={() => setExpandedPost(expandedPost === discussion.id ? null : discussion.id)}
                         >
-                          {expandedPost === discussion.id ? discussion.content : getTruncatedContent(discussion.content)}
+                          {(() => {
+                            const cleaned = discussion.isSkoolHighlight
+                              ? discussion.content.replace(/^🟦\s*Skool\s*Highlight\s*\n\n?/i, '')
+                              : discussion.content;
+                            return expandedPost === discussion.id ? cleaned : getTruncatedContent(cleaned);
+                          })()}
                           {discussion.content.length > 150 && expandedPost !== discussion.id && (
                             <span className="text-cyan-400 ml-2 font-medium">Read more</span>
                           )}
