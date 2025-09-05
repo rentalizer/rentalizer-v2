@@ -365,6 +365,31 @@ const Community = () => {
             <GroupDiscussions 
               disablePosting={userIsAdmin}
               pinScope={userIsAdmin ? 'global' : 'author'}
+              {...(userIsAdmin ? {
+                // Show Skool tag and link badges for admins on the regular page
+                forceTagLabel: 'Skool',
+                skoolLinkOverrides: {
+                  'Photographer with advice': 'https://www.skool.com/creativeairbnb/photographer-with-advice',
+                  'EIN # still not received': 'https://www.skool.com/creativeairbnb/ein-still-not-received',
+                  'One market at a time?...': 'http://skool.com/creativeairbnb/one-market-at-a-time',
+                  'Lmk what u think of my website....': 'https://www.skool.com/creativeairbnb/lmk-what-u-think-of-my-website',
+                  'SIC CODES': 'https://www.skool.com/creativeairbnb/sic-codes',
+                  'Getting Started': 'https://www.skool.com/creativeairbnb/getting-started',
+                  'New Member': 'https://www.skool.com/creativeairbnb/new-member',
+                  'Financial update': 'https://www.skool.com/creativeairbnb/financial-update',
+                  'Spam Calls': 'https://www.skool.com/creativeairbnb/spam-calls',
+                  'Go Daddy Plans?': 'https://www.skool.com/creativeairbnb/go-daddy-plans',
+                  'Excited to Learn, Share, and Grow With This Community': 'https://www.skool.com/creativeairbnb/excited-to-learn-share-and-grow-with-this-community',
+                  'Help with Website text': 'https://www.skool.com/creativeairbnb/help-with-website-text',
+                  "I'm new and just joining the group": 'https://www.skool.com/creativeairbnb/im-new-and-just-joining-the-group',
+                  'Replays?': 'https://www.skool.com/creativeairbnb/replays',
+                  'A non home address': 'http://skool.com/creativeairbnb/a-non-home-address',
+                  'Business Phone Number': 'https://www.skool.com/creativeairbnb/business-phone-number',
+                },
+                // Allow admin to pin anywhere
+                adminCanPin: true,
+                allowAdminPinAll: true,
+              } : {})}
             />
           </TabsContent>
           <TabsContent value="calendar" className="mt-8">

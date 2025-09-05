@@ -24,13 +24,20 @@ import {
   Calculator
 } from 'lucide-react';
 
+type Property = {
+  title: string;
+  address?: string;
+  price?: number;
+  [key: string]: string | number | undefined;
+};
+
 export default function AcquisitionsAgent() {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [selectedProperty, setSelectedProperty] = useState<any>(null);
+  const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [activeTab, setActiveTab] = useState('properties');
 
-  const handleContactProperty = (property: any) => {
+  const handleContactProperty = (property: Property) => {
     setSelectedProperty(property);
     setActiveTab('agent');
     
@@ -156,11 +163,13 @@ export default function AcquisitionsAgent() {
                     <div className="flex items-center gap-4 text-sm text-blue-200">
                       <span className="flex items-center gap-1">
                         <MapPin className="h-3 w-3" />
-                        {selectedProperty.address}
+                        {selectedProperty.address || '—'}
                       </span>
                       <span className="flex items-center gap-1">
                         <Badge variant="outline" className="border-blue-400/30 text-blue-200">
-                          ${selectedProperty.price.toLocaleString()}/mo
+                          {typeof selectedProperty.price === 'number' 
+                            ? `$${selectedProperty.price.toLocaleString()}/mo`
+                            : 'Price N/A'}
                         </Badge>
                       </span>
                     </div>
@@ -205,7 +214,13 @@ export default function AcquisitionsAgent() {
           <TabsContent value="agent" className="space-y-6">
             <Card className="bg-slate-800/50 border-blue-500/20 backdrop-blur-sm">
               <CardContent className="p-6">
-                <AIEmailAgent selectedProperty={selectedProperty} />
+                {selectedProperty ? (
+                  <AIEmailAgent selectedProperty={selectedProperty} />
+                ) : (
+                  <div className="text-center text-slate-300">
+                    Select a property from the Property Feed first to compose an outreach email.
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

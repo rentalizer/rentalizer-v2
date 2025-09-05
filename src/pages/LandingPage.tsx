@@ -208,9 +208,9 @@ const LandingPage = () => {
 
           </div>
 
-          {/* Distinct Entry Points: User vs Admin */}
+          {/* Entry Button */}
           <div className="mb-16">
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div className="flex items-center justify-center">
               <Button
                 onClick={() => {
                   if (user) {
@@ -219,26 +219,22 @@ const LandingPage = () => {
                     navigate('/dashboard?redirect=/dashboard');
                   }
                 }}
+                aria-label="Get Started"
                 size="lg"
-                className="bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-500/30 px-8 py-6"
+                className="
+                  group relative px-10 py-6 rounded-xl
+                  bg-gradient-to-r from-cyan-600 to-blue-600
+                  text-white font-semibold tracking-wide
+                  shadow-lg shadow-cyan-800/30
+                  ring-1 ring-cyan-400/30
+                  hover:from-cyan-500 hover:to-blue-500
+                  hover:shadow-cyan-700/40 hover:ring-cyan-300/50
+                  transition-all duration-200 ease-out
+                  active:scale-[0.98]
+                "
               >
-                <LogIn className="h-5 w-5 mr-2" />
-                Enter App
-              </Button>
-              <Button
-                onClick={() => {
-                  if (user) {
-                    navigate('/admin');
-                  } else {
-                    navigate('/dashboard?redirect=/admin');
-                  }
-                }}
-                variant="outline"
-                size="lg"
-                className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 px-8 py-6"
-              >
-                <Shield className="h-5 w-5 mr-2" />
-                Admin Console
+                <LogIn className="h-5 w-5 mr-2 opacity-90 group-hover:opacity-100" />
+                Get Started
               </Button>
             </div>
           </div>

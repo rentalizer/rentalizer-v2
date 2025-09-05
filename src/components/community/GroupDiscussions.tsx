@@ -137,10 +137,21 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
     const date = new Date(dateString);
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
-    
+
+    // Under 1 hour → minutes
     if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    // Under 24 hours → hours
     if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
-    return `${Math.floor(diffInMinutes / 1440)}d ago`;
+    // Under 7 days → days
+    const diffInDays = Math.floor(diffInMinutes / 1440);
+    if (diffInDays < 7) return `${diffInDays}d ago`;
+
+    // 7 days or more → calendar style: MMM d (same year) or MMM d, yyyy (different year)
+    const sameYear = date.getFullYear() === now.getFullYear();
+    const opts: Intl.DateTimeFormatOptions = sameYear
+      ? { month: 'short', day: 'numeric' }
+      : { month: 'short', day: 'numeric', year: 'numeric' };
+    return date.toLocaleDateString(undefined, opts);
   }, []);
 
   // Fetch discussions from database with proper sorting
