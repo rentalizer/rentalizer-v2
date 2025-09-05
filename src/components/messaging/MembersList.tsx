@@ -44,16 +44,23 @@ export default function MembersList({
   );
 
   const sortedMembers = filteredMembers.sort((a, b) => {
-    // Sort by unread messages first, then by online status, then by last activity
+    // Sort by unread messages first (new messages from non-admin users to admin)
     if (a.unreadCount !== b.unreadCount) {
       return b.unreadCount - a.unreadCount;
     }
+    // Then by recent message activity (members with newer messages first)
+    if (a.lastMessage && b.lastMessage) {
+      const aTime = new Date(a.lastMessage.timestamp).getTime();
+      const bTime = new Date(b.lastMessage.timestamp).getTime();
+      if (aTime !== bTime) {
+        return bTime - aTime;
+      }
+    }
+    // Then by online status
     if (a.isOnline !== b.isOnline) {
       return a.isOnline ? -1 : 1;
     }
-    if (a.lastActivity && b.lastActivity) {
-      return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
-    }
+    // Finally by name
     return a.name.localeCompare(b.name);
   });
 
@@ -99,7 +106,8 @@ export default function MembersList({
                 key={member.id}
                 onClick={() => onMemberSelect(member.id)}
                 className={`p-3 rounded-lg cursor-pointer transition-colors hover:bg-slate-600/50 ${
-                  selectedMemberId === member.id ? 'bg-primary/20 border border-primary/40' : 'hover:bg-slate-700/60'
+                  selectedMemberId === member.id ? 'bg-primary/20 border border-primary/40' : 
+                  member.unreadCount > 0 ? 'bg-red-500/10 border border-red-500/30 hover:bg-red-500/20' : 'hover:bg-slate-700/60'
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -132,32 +140,29 @@ export default function MembersList({
                       )}
                     </div>
 
-                    {/* Last message or email */}
-                    <p className="text-sm text-muted-foreground truncate mb-1">
-                      {member.lastMessage ? (
-                        <span className={member.lastMessage.isFromMember ? 'font-medium' : ''}>
-                          {member.lastMessage.isFromMember ? 'Member: ' : 'You: '}
-                          {member.lastMessage.content}
-                        </span>
-                      ) : (
-                        member.email
-                      )}
-                    </p>
 
-                    {/* Status and time */}
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span className={`inline-flex items-center gap-1 ${member.isOnline ? 'text-green-600' : ''}`}>
-                        <div className={`w-2 h-2 rounded-full ${member.isOnline ? 'bg-green-500' : 'bg-gray-400'}`} />
-                        {member.isOnline ? 'Online' : 'Offline'}
-                      </span>
-                      {(member.lastMessage?.timestamp || member.lastActivity) && (
-                        <span>
-                          {formatDistanceToNow(
-                            new Date(member.lastMessage?.timestamp || member.lastActivity!),
-                            { addSuffix: true }
-                          )}
-                        </span>
-                      )}
+                    {/* Last message and time on same line */}
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <div className="flex-1 truncate mr-2">
+                        {member.lastMessage ? (
+                          <span className={member.lastMessage.isFromMember ? 'font-medium' : ''}>
+                            {member.lastMessage.isFromMember ? 'Member: ' : 'You: '}
+                            {member.lastMessage.content}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">No messages yet</span>
+                        )}
+                      </div>
+                      <div className="flex-shrink-0">
+                        {(member.lastMessage?.timestamp || member.lastActivity) && (
+                          <span>
+                            {formatDistanceToNow(
+                              new Date(member.lastMessage?.timestamp || member.lastActivity!),
+                              { addSuffix: true }
+                            )}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -20,8 +20,19 @@ export default function AdminSupportButton() {
 
   if (isOpen) {
     return (
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-card border-2 border-border shadow-2xl rounded-xl w-full max-w-6xl h-[80vh] flex flex-col">
+      <div 
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+        onClick={(e) => {
+          // Only close if clicking the backdrop, not the modal content
+          if (e.target === e.currentTarget) {
+            setIsOpen(false);
+          }
+        }}
+      >
+        <div 
+          className="bg-card border-2 border-border shadow-2xl rounded-xl w-full max-w-6xl h-[80vh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b-2 border-border bg-muted/20 rounded-t-xl">
             <div className="flex items-center gap-3">

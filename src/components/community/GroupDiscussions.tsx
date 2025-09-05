@@ -280,7 +280,13 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
 
     // Apply pin scope ordering for non-admin user views if needed
     if (pinScope === 'author' && user && !isAdmin) {
-      const score = (d: Discussion) => (d.isPinned && d.user_id === user.id ? 1 : 0);
+      // Ensure globally pinned posts (e.g., pinned by admin) are always prioritized for everyone.
+      // Among pinned posts, prioritize the current user's own pinned posts slightly higher.
+      const score = (d: Discussion) => {
+        const globalPin = d.isPinned ? 2 : 0; // global pin priority
+        const ownBoost = d.isPinned && d.user_id === user.id ? 1 : 0; // own pinned boost
+        return globalPin + ownBoost;
+      };
       list = [...list].sort((a, b) => {
         const s = score(b) - score(a);
         if (s !== 0) return s;
@@ -293,6 +299,9 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
 
   // Control visibility of the pinned icon/badge based on pinScope
   const isPinnedVisible = useCallback((d: Discussion) => {
+    // If a post is globally pinned (e.g., by admin), show the pin for everyone.
+    if (d.isPinned) return true;
+    // Otherwise, in author scope for non-admins, only show pin if it's their own.
     if (pinScope === 'author' && user && !isAdmin) {
       return !!d.isPinned && d.user_id === user.id;
     }
@@ -351,11 +360,15 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
 
       // Optimistic UI update so the badge/icon turns yellow immediately and item moves to top
       const sorter = (a: Discussion, b: Discussion) => {
-        // In author scope for non-admins, only prioritize the current user's pinned posts
+        // In author scope for non-admins, prioritize all pinned posts first (global pins),
+        // and within pinned, put the current user's pinned posts first.
         if (pinScope === 'author' && user && !isAdmin) {
-          const aScore = a.isPinned && a.user_id === user.id ? 1 : 0;
-          const bScore = b.isPinned && b.user_id === user.id ? 1 : 0;
-          const delta = bScore - aScore;
+          const score = (d: Discussion) => {
+            const globalPin = d.isPinned ? 2 : 0;
+            const ownBoost = d.isPinned && d.user_id === user.id ? 1 : 0;
+            return globalPin + ownBoost;
+          };
+          const delta = score(b) - score(a);
           if (delta !== 0) return delta;
         } else {
           const pinDelta = (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
@@ -626,10 +639,32 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
             ) : (
             filteredDiscussions.map((discussion) => {
               const profileInfo = getProfileInfo(discussion.user_id, discussion.author);
+              const pinnedForUser = isPinnedVisible(discussion) && !isAdmin;
               
               return (
-                <Card key={discussion.id} className="bg-slate-800/50 border-gray-700/50 hover:bg-slate-800/70 transition-colors">
+                <Card 
+                  key={discussion.id} 
+                  className={`bg-slate-800/50 border-gray-700/50 hover:bg-slate-800/70 transition-all duration-300 ${pinnedForUser ? 'border-yellow-400/60 ring-2 ring-yellow-400/40 bg-gradient-to-br from-yellow-500/10 via-orange-500/5 to-transparent shadow-lg shadow-yellow-500/10 hover:shadow-yellow-500/20 hover:ring-yellow-400/60' : ''}`}
+                >
                   <CardContent className="p-6">
+                    {pinnedForUser && (
+                      <div className="-mt-2 mb-4 relative">
+                        <div className="flex items-center justify-between bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg p-3 border border-yellow-400/30">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
+                              <TrendingUp className="h-5 w-5 text-yellow-400 animate-pulse" />
+                              <span className="text-sm font-bold text-yellow-300">🔥 MUST READ</span>
+                            </div>
+                            <Badge className="bg-yellow-500/30 text-yellow-200 border-yellow-400/50 text-xs px-2 py-1 animate-bounce">
+                              Popular
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-yellow-300/80 font-medium">
+                            Recommended by Admins
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-start gap-4">
                       {/* User Avatar */}
                       <Avatar className="w-12 h-12 flex-shrink-0">

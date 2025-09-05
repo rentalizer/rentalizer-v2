@@ -53,7 +53,12 @@ export default function MessageThread({
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
     const trimmed = newMessage.trim();
     if (!trimmed) return;
     
@@ -154,7 +159,7 @@ export default function MessageThread({
                     </span>
                     {isOwn && (
                       <Badge variant={message.isRead ? 'default' : 'secondary'} className="text-xs px-1 py-0">
-                        {message.isRead ? 'Read' : 'Sent'}
+                        {message.isRead ? 'Read' : (isOnline ? 'Delivered' : 'Sent')}
                       </Badge>
                     )}
                   </div>
@@ -197,7 +202,7 @@ export default function MessageThread({
 
       {/* Message Input */}
       <div className="p-4 border-t border-border bg-slate-700/80">
-        <div className="flex items-end gap-2">
+        <form onSubmit={handleSendMessage} className="flex items-end gap-2">
           <div className="flex-1">
             <Input
               value={newMessage}
@@ -218,6 +223,7 @@ export default function MessageThread({
           />
           
           <Button
+            type="button"
             variant="outline"
             size="sm"
             onClick={() => fileInputRef.current?.click()}
@@ -227,13 +233,13 @@ export default function MessageThread({
           </Button>
           
           <Button
-            onClick={handleSendMessage}
+            type="submit"
             disabled={!newMessage.trim() || isUploading}
             size="sm"
           >
             <Send className="h-4 w-4" />
           </Button>
-        </div>
+        </form>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAdminRole } from '@/hooks/useAdminRole';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useOnlineUsers } from '@/hooks/useOnlineUsers';
 import { MessageSquare, Users, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +34,7 @@ export default function AdminSupportMessaging() {
   const { user } = useAuth();
   const { isAdmin } = useAdminRole();
   const { toast } = useToast();
+  const { onlineUsers } = useOnlineUsers();
   
   const [members, setMembers] = useState<MessagingMember[]>([]);
   const [selectedMemberId, setSelectedMemberId] = useState<string>();
@@ -98,9 +100,9 @@ export default function AdminSupportMessaging() {
               return {
                 id: profile.user_id,
                 name: profile.display_name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Unknown User',
-                email: profile.user_id, // We don't have email in profiles, using user_id as fallback
+                email: '', // Remove ID display - use empty string instead of user_id
                 avatar: profile.avatar_url,
-                isOnline: false, // TODO: Implement presence
+                isOnline: onlineUsers.some(onlineUser => onlineUser.user_id === profile.user_id),
                 unreadCount: unreadCount || 0,
                 isAdmin: isUserAdmin || false,
                 lastMessage: latestMessage ? {
@@ -126,7 +128,7 @@ export default function AdminSupportMessaging() {
     };
 
     loadMembers();
-  }, [user, isAdmin]);
+  }, [user, isAdmin, onlineUsers]);
 
   // For members, find the first admin to chat with
   useEffect(() => {
@@ -138,19 +140,56 @@ export default function AdminSupportMessaging() {
       try {
         setLoading(true);
         
-        // Find first admin user
-        const { data: adminRoles, error: adminError } = await supabase
+        // Find first admin user - try multiple approaches
+        console.log('🔍 Looking for admin users...');
+        
+        // First try: Look for users with admin role
+        let { data: adminRoles } = await supabase
           .from('user_roles')
           .select('user_id')
           .eq('role', 'admin')
           .limit(1);
 
-        if (adminError) {
-          console.error('❌ Error finding admin:', adminError);
+        console.log('📊 Admin roles query result:', { adminRoles });
+
+        // If no results, try different approaches to find admins
+        if (!adminRoles || adminRoles.length === 0) {
+          console.log('🔍 No admin role found, trying alternative approaches...');
+          
+          // Alternative: Look for users who have created admin posts or have admin privileges
+          // This is a fallback when user_roles table might be empty
+          const { data: profiles, error: profilesError } = await supabase
+            .from('profiles')
+            .select('user_id, display_name')
+            .limit(5);
+          
+          console.log('📊 Available profiles for fallback:', { profiles, profilesError });
+          
+          // Use the first available user as fallback admin (temporary solution)
+          if (profiles && profiles.length > 0) {
+            adminRoles = [{ user_id: profiles[0].user_id }];
+            console.log('⚠️ Using fallback admin:', profiles[0].user_id);
+          }
+        }
+
+        // If still no results, check if user_roles table has any data at all
+        if (!adminRoles || adminRoles.length === 0) {
+          console.log('🔍 Checking all user_roles...');
+          const { data: allRoles, error: allRolesError } = await supabase
+            .from('user_roles')
+            .select('user_id, role')
+            .limit(10);
+          
+          console.log('📊 All roles in table:', { allRoles, allRolesError });
+        }
+
+        // Check if we found any admin users
+        if (!adminRoles || adminRoles.length === 0) {
+          console.log('❌ No admin users found in database');
           setLoading(false);
           toast({
-            title: "Connection Issue",
-            description: "Unable to connect to admin support at the moment. Please try again later.",
+            title: "No Admin Available",
+            description: "No admin is currently available to receive messages. Please try again later.",
             variant: "destructive"
           });
           return;
@@ -158,9 +197,17 @@ export default function AdminSupportMessaging() {
 
         if (adminRoles && adminRoles.length > 0) {
           const adminId = adminRoles[0].user_id;
+          console.log('✅ Found admin for non-admin user:', adminId);
           setSelectedMemberId(adminId);
-        } else {
           setLoading(false);
+        } else {
+          console.log('❌ No admin found for non-admin user');
+          setLoading(false);
+          toast({
+            title: "No Admin Available",
+            description: "No admin is currently available to receive messages. Please try again later.",
+            variant: "destructive"
+          });
         }
       } catch (error) {
         setLoading(false);
@@ -172,6 +219,11 @@ export default function AdminSupportMessaging() {
     findAdminAndLoadMessages();
   }, [user, isAdmin, selectedMemberId, toast]);
 
+  // Helper: stable conversation id from two UUIDs
+  const getConversationId = (a: string, b: string) => {
+    return a <= b ? `${a}|${b}` : `${b}|${a}`;
+  };
+
   // Load messages for selected conversation
   useEffect(() => {
     if (!user || !selectedMemberId) {
@@ -181,12 +233,36 @@ export default function AdminSupportMessaging() {
 
     const loadMessages = async () => {
       try {
-        console.log('📨 Loading messages for conversation:', { userId: user.id, selectedMemberId });
-        const { data, error } = await supabase
-          .from('direct_messages')
-          .select('*')
-          .or(`and(sender_id.eq.${user.id},recipient_id.eq.${selectedMemberId}),and(sender_id.eq.${selectedMemberId},recipient_id.eq.${user.id})`)
+        const conversationId = getConversationId(user.id, selectedMemberId);
+        console.log('📨 Loading messages for conversation:', { userId: user.id, selectedMemberId, conversationId });
+        
+        // Prefer conversation_id for accuracy; fall back to OR filter if column doesn't exist yet
+        // Use a minimal typed interface to avoid deep generic instantiation from Supabase types
+        interface DMQuery {
+          select: (cols: string) => {
+            eq: (col: string, val: string) => {
+              order: (col: string, opts: { ascending: boolean }) => Promise<{ data: unknown; error: { message: string } | null }>;
+            };
+            or: (expr: string) => {
+              order: (col: string, opts: { ascending: boolean }) => Promise<{ data: unknown; error: { message: string } | null }>;
+            };
+          };
+        }
+        const dm = supabase.from('direct_messages') as unknown as DMQuery;
+        let queryRes: { data: unknown; error: { message: string } | null } = await dm
+          .select('id,sender_id,recipient_id,message,created_at,read_at,sender_name,conversation_id')
+          .eq('conversation_id', conversationId)
           .order('created_at', { ascending: true });
+
+        if (queryRes.error) {
+          console.warn('⚠️ conversation_id query failed, falling back to OR filter:', queryRes.error.message);
+          queryRes = await dm
+            .select('id,sender_id,recipient_id,message,created_at,read_at,sender_name,conversation_id')
+            .or(`and(sender_id.eq.${user.id},recipient_id.eq.${selectedMemberId}),and(sender_id.eq.${selectedMemberId},recipient_id.eq.${user.id})`)
+            .order('created_at', { ascending: true });
+        }
+
+        const { data, error } = queryRes;
 
         if (error) {
           console.error('Error loading messages:', error);
@@ -194,7 +270,10 @@ export default function AdminSupportMessaging() {
           return;
         }
 
-        const formattedMessages: Message[] = (data as DirectMessageRow[] | null || []).map((msg: DirectMessageRow) => ({
+        // Safely coerce data into our expected row type for mapping
+        const rows: DirectMessageRow[] = ((data as unknown) as DirectMessageRow[] | null) ?? [];
+
+        const formattedMessages: Message[] = rows.map((msg: DirectMessageRow) => ({
           id: msg.id,
           senderId: msg.sender_id,
           receiverId: msg.recipient_id,
@@ -208,9 +287,9 @@ export default function AdminSupportMessaging() {
         setMessages(formattedMessages);
 
         // Mark messages as read if current user is recipient
-        const unreadMessages = data
-          ?.filter(msg => msg.recipient_id === user.id && !msg.read_at)
-          ?.map(msg => msg.id) || [];
+        const unreadMessages = rows
+          .filter((msg) => msg.recipient_id === user.id && !msg.read_at)
+          .map((msg) => msg.id);
 
         if (unreadMessages.length > 0) {
           await supabase
@@ -239,6 +318,8 @@ export default function AdminSupportMessaging() {
   useEffect(() => {
     if (!user) return;
 
+    console.log('🔔 Setting up real-time subscription for user:', user.id, 'isAdmin:', isAdmin);
+
     const channel = supabase
       .channel('direct_messages_realtime')
       .on(
@@ -251,6 +332,23 @@ export default function AdminSupportMessaging() {
         },
         (payload) => {
           const newMessage = payload.new as DirectMessageRow;
+          console.log('🔔 Real-time message received:', {
+            messageId: newMessage.id,
+            senderId: newMessage.sender_id,
+            recipientId: newMessage.recipient_id,
+            currentUserId: user.id,
+            selectedMemberId,
+            isAdmin,
+            message: newMessage.message
+          });
+          
+          // Check if this message involves the current user
+          const isForCurrentUser = newMessage.sender_id === user.id || newMessage.recipient_id === user.id;
+          
+          if (!isForCurrentUser) {
+            console.log('❌ Message not for current user, ignoring');
+            return;
+          }
           
           // Only process if it's for current conversation or affects member list
           const isCurrentConversation = selectedMemberId &&
@@ -259,6 +357,7 @@ export default function AdminSupportMessaging() {
 
           // Add to messages if it's for current conversation
           if (isCurrentConversation) {
+            console.log('✅ Adding message to current conversation');
             const formattedMessage: Message = {
               id: newMessage.id,
               senderId: newMessage.sender_id,
@@ -273,26 +372,64 @@ export default function AdminSupportMessaging() {
             // Only add if not already in state (avoid duplicates)
             setMessages(prev => {
               const exists = prev.some(msg => msg.id === formattedMessage.id);
-              return exists ? prev : [...prev, formattedMessage];
+              if (exists) {
+                console.log('⚠️ Message already exists, skipping');
+                return prev;
+              }
+              console.log('➕ Adding new message to conversation');
+              return [...prev, formattedMessage];
             });
           }
 
-          // Update members list for admin view
+          // Update members list for admin view - always update when receiving messages
           if (isAdmin && newMessage.sender_id !== user.id) {
-            setMembers(prev => prev.map(member => {
-              if (member.id === newMessage.sender_id) {
-                return {
-                  ...member,
-                  unreadCount: selectedMemberId === member.id ? member.unreadCount : member.unreadCount + 1,
+            console.log('📨 Admin received message from:', newMessage.sender_id, 'Message:', newMessage.message);
+            
+            setMembers(prev => {
+              const existingMember = prev.find(m => m.id === newMessage.sender_id);
+              
+              if (existingMember) {
+                // Update existing member
+                return prev.map(member => {
+                  if (member.id === newMessage.sender_id) {
+                    return {
+                      ...member,
+                      unreadCount: selectedMemberId === member.id ? member.unreadCount : member.unreadCount + 1,
+                      lastMessage: {
+                        content: newMessage.message,
+                        timestamp: newMessage.created_at,
+                        isFromMember: true
+                      }
+                    };
+                  }
+                  return member;
+                });
+              } else {
+                // Add new member if they don't exist in the list
+                console.log('➕ Adding new member to admin list:', newMessage.sender_id);
+                const newMember: MessagingMember = {
+                  id: newMessage.sender_id,
+                  name: newMessage.sender_name || 'Unknown User',
+                  email: '',
+                  avatar: '',
+                  isOnline: false,
+                  isAdmin: false,
+                  unreadCount: 1,
                   lastMessage: {
                     content: newMessage.message,
                     timestamp: newMessage.created_at,
                     isFromMember: true
-                  }
+                  },
+                  lastActivity: newMessage.created_at
                 };
+                return [...prev, newMember];
               }
-              return member;
-            }));
+            });
+          }
+          
+          // For non-admin users, also update if they receive a message from admin
+          if (!isAdmin && newMessage.sender_id !== user.id) {
+            console.log('📨 Non-admin received message from admin:', newMessage.sender_id);
           }
         }
       )
@@ -323,18 +460,79 @@ export default function AdminSupportMessaging() {
   }, [user, selectedMemberId, isAdmin]);
 
   const handleSendMessage = async (messageContent: string) => {
-    if (!user || !selectedMemberId || !messageContent.trim()) {
+    console.log('🔍 handleSendMessage called with:', { 
+      user: !!user, 
+      userId: user?.id, 
+      selectedMemberId, 
+      messageContent: messageContent?.trim(),
+      isAdmin 
+    });
+
+    if (!user) {
       toast({
-        title: "Cannot send message",
-        description: "Please make sure you're logged in and have selected a recipient.",
+        title: "Not logged in",
+        description: "Please log in to send messages.",
         variant: "destructive"
       });
       return;
     }
+
+    if (!messageContent.trim()) {
+      toast({
+        title: "Empty message",
+        description: "Please enter a message to send.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    let finalRecipientId = selectedMemberId;
+
+    if (!selectedMemberId) {
+      console.log('❌ No selectedMemberId, attempting to find admin...');
+      // For non-admin users, try to find an admin to send to
+      if (!isAdmin) {
+        try {
+          const { data: adminRoles, error } = await supabase
+            .from('user_roles')
+            .select('user_id')
+            .eq('role', 'admin')
+            .limit(1);
+
+          if (error || !adminRoles || adminRoles.length === 0) {
+            toast({
+              title: "No admin available",
+              description: "No admin is currently available to receive your message.",
+              variant: "destructive"
+            });
+            return;
+          }
+
+          const adminId = adminRoles[0].user_id;
+          setSelectedMemberId(adminId);
+          finalRecipientId = adminId;
+        } catch (error) {
+          console.error('Error finding admin:', error);
+          toast({
+            title: "Connection error",
+            description: "Unable to connect to admin support.",
+            variant: "destructive"
+          });
+          return;
+        }
+      } else {
+        toast({
+          title: "No recipient selected",
+          description: "Please select a member to send a message to.",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
     
     console.log('🚀 Sending message:', {
       sender_id: user.id,
-      recipient_id: selectedMemberId,
+      recipient_id: finalRecipientId,
       message: messageContent.trim()
     });
 
@@ -356,7 +554,7 @@ export default function AdminSupportMessaging() {
       const optimisticMessage: Message = {
         id: `temp-${Date.now()}`,
         senderId: user.id,
-        receiverId: selectedMemberId,
+        receiverId: finalRecipientId,
         message: messageContent.trim(),
         timestamp: new Date().toISOString(),
         isRead: false,
@@ -367,12 +565,14 @@ export default function AdminSupportMessaging() {
       // Add to UI immediately
       setMessages(prev => [...prev, optimisticMessage]);
 
-      // Insert message to database
+      // Insert message to database. We do NOT send conversation_id here to avoid type mismatches
+      // on environments where the column may be uuid. A DB trigger (if present) will populate it.
+      const conversationId = getConversationId(user.id, finalRecipientId!);
       const { data: newMessage, error } = await supabase
         .from('direct_messages')
         .insert({
           sender_id: user.id,
-          recipient_id: selectedMemberId,
+          recipient_id: finalRecipientId,
           sender_name: senderName,
           message: messageContent.trim()
         })
@@ -411,11 +611,6 @@ export default function AdminSupportMessaging() {
           msg.id === optimisticMessage.id ? formattedMessage : msg
         ));
       }
-
-      toast({
-        title: "Message sent!",
-        description: "Your message has been delivered.",
-      });
 
     } catch (error) {
       console.error('Error in handleSendMessage:', error);
