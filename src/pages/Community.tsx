@@ -300,12 +300,12 @@ const Community = () => {
       <div className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
         {/* Community Header */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
+          <Link to="/dashboard" title="Go to Dashboard" className="flex items-center justify-center gap-3 mb-4 cursor-pointer">
             <Users className="h-12 w-12 text-cyan-400" />
             <h1 className="text-5xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent leading-tight py-2">
               Training Dashboard
             </h1>
-          </div>
+          </Link>
           
           {/* Admin Chat Button */}
           <div className="flex items-center justify-center gap-4 mt-4">

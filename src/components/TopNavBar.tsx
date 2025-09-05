@@ -45,7 +45,7 @@ export const TopNavBar = () => {
         <div className="flex items-center justify-between">
           {/* Left side - Logo */}
           <div className="flex items-center gap-3">
-            <Link to={onAdminRoute ? "/admin" : "/"} className="flex items-center gap-3">
+            <Link to="/dashboard" className="flex items-center gap-3" title="Go to Dashboard">
               <BarChart3 className="h-8 w-8 text-cyan-400" style={{
                 filter: 'drop-shadow(0 0 6px rgba(6, 182, 212, 1)) drop-shadow(0 0 12px rgba(6, 182, 212, 0.9)) drop-shadow(0 0 18px rgba(6, 182, 212, 0.8)) drop-shadow(0 0 24px rgba(6, 182, 212, 0.7)) drop-shadow(0 0 30px rgba(6, 182, 212, 0.6)) drop-shadow(0 0 36px rgba(6, 182, 212, 0.5))'
               }} />
