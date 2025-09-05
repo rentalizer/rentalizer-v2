@@ -7,16 +7,19 @@ import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, Search, X, Pin } from 'lucide-react';
+import { ArrowLeft, Search, X, Pin, Trash2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const AdminDiscussions: React.FC = () => {
   const { isAdmin, loading } = useAdminRole();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [authorInput, setAuthorInput] = useState('');
   const [authorSearch, setAuthorSearch] = useState('');
   const [selectedAuthor, setSelectedAuthor] = useState<string | null>(null);
   const [loadingAuthors, setLoadingAuthors] = useState(true);
   const [authors, setAuthors] = useState<{ name: string; user_id: string | null; count: number; last_post_at?: string | null; avatar_url?: string | null; pinnedCount?: number; pinnedTitles?: string[] }[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
   const isDevBypass = (
     (typeof import.meta !== 'undefined' && typeof import.meta.env !== 'undefined' && import.meta.env.DEV === true) ||
     (typeof window !== 'undefined' && (
@@ -224,6 +227,48 @@ const AdminDiscussions: React.FC = () => {
                   <ArrowLeft className="h-4 w-4 mr-2" /> Back to Members
                 </Button>
               )}
+
+              {selectedAuthor && (
+                <div className="ml-auto flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    onClick={async () => {
+                      if (!isAdmin || !selectedAuthor) return;
+                      const a = authors.find((au) => au.name === selectedAuthor) || null;
+                      const confirmMsg = `Delete ALL posts by ${selectedAuthor}? This cannot be undone.`;
+                      const ok = typeof window !== 'undefined' ? window.confirm(confirmMsg) : true;
+                      if (!ok) return;
+                      try {
+                        let q = supabase.from('discussions').delete();
+                        if (a?.user_id) {
+                          q = q.eq('user_id', a.user_id);
+                        } else {
+                          q = q.eq('author_name', selectedAuthor);
+                        }
+                        const { data, error } = await q.select('id');
+                        if (error) {
+                          console.error('Failed to delete all posts by member (admin UI):', error);
+                          toast({ title: 'Error', description: 'Failed to delete posts.', variant: 'destructive' });
+                          return;
+                        }
+                        const count = data?.length ?? 0;
+                        // Force the posts list to reload
+                        setReloadKey((k) => k + 1);
+                        // Optionally update authors list counts quickly
+                        setAuthors((prev) => prev.map((au) => au.name === selectedAuthor ? { ...au, count: 0, pinnedCount: 0, pinnedTitles: [] } : au));
+                        toast({ title: 'Deleted', description: `Removed ${count} post${count === 1 ? '' : 's'} by ${selectedAuthor}.` });
+                      } catch (e) {
+                        console.error('Exception deleting posts (admin UI):', e);
+                        toast({ title: 'Error', description: 'There was an error deleting posts.', variant: 'destructive' });
+                      }
+                    }}
+                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                    title="Delete all posts by this member"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" /> Delete all posts
+                  </Button>
+                </div>
+              )}
               
               {/* Professional Search Box */}
               {!selectedAuthor && (
@@ -411,6 +456,8 @@ const AdminDiscussions: React.FC = () => {
                 skoolLinkOverrides={linkOverrides || undefined}
                 allowAdminPinAll
                 adminCanPin
+                adminContext
+                key={`member-${selectedAuthor}-${reloadKey}`}
               />
             </div>
           )}

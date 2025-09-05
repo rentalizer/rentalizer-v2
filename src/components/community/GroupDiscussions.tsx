@@ -52,7 +52,7 @@ interface UserProfile {
   last_name: string | null;
 }
 
-export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, forceTagLabel, authorFilter, titleLinkOverrides, skoolLinkOverrides, allowAdminPinAll = false, adminCanPin = false, pinScope = 'global' }: { isDayMode?: boolean; disablePosting?: boolean; forceTagLabel?: string; authorFilter?: string; titleLinkOverrides?: Record<string, string>; skoolLinkOverrides?: Record<string, string>; allowAdminPinAll?: boolean; adminCanPin?: boolean; pinScope?: 'global' | 'author' }) => {
+export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, forceTagLabel, authorFilter, titleLinkOverrides, skoolLinkOverrides, allowAdminPinAll = false, adminCanPin = false, pinScope = 'global', adminContext = false }: { isDayMode?: boolean; disablePosting?: boolean; forceTagLabel?: string; authorFilter?: string; titleLinkOverrides?: Record<string, string>; skoolLinkOverrides?: Record<string, string>; allowAdminPinAll?: boolean; adminCanPin?: boolean; pinScope?: 'global' | 'author'; adminContext?: boolean }) => {
   const { user, profile } = useAuth();
   const { isAdmin } = useAdminRole();
   const { toast } = useToast();
@@ -63,6 +63,8 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
   const [comments, setComments] = useState<{[key: string]: {id: string; author: string; avatar: string; content: string; timeAgo: string;}[]}>({});
   const [editingPost, setEditingPost] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
   const [userProfiles, setUserProfiles] = useState<{[key: string]: UserProfile}>({});
@@ -468,13 +470,97 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
     }
   }, [toast]);
 
+  // Save edit to database and update UI
+  const handleSaveEdit = useCallback(async (discussionId: string) => {
+    if (!editingPost) return;
+    if (!editTitle.trim()) {
+      toast({ title: 'Title required', description: 'Please enter a title.', variant: 'destructive' });
+      return;
+    }
+    try {
+      setIsSavingEdit(true);
+      const { data, error } = await supabase
+        .from('discussions')
+        .update({ content: editContent, title: editTitle })
+        .eq('id', discussionId)
+        .select('id, content, title')
+        .single();
+
+      if (error) {
+        console.error('❌ Error updating discussion:', error);
+        toast({ title: 'Error', description: 'Failed to save changes.', variant: 'destructive' });
+        setIsSavingEdit(false);
+        return;
+      }
+
+      // Update UI state
+      setDiscussionsList(prev => prev.map(d => d.id === discussionId ? { ...d, content: data?.content ?? editContent, title: data?.title ?? editTitle } : d));
+      setEditingPost(null);
+      setEditContent('');
+      setEditTitle('');
+      setIsSavingEdit(false);
+      toast({ title: 'Saved', description: 'Your post has been updated.' });
+    } catch (e) {
+      console.error('❌ Exception updating discussion:', e);
+      setIsSavingEdit(false);
+      toast({ title: 'Error', description: 'There was an error saving your changes.', variant: 'destructive' });
+    }
+  }, [editingPost, editContent, editTitle, toast]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingPost(null);
+    setEditContent('');
+    setEditTitle('');
+  }, []);
+
+  // Admin-only: delete all posts by a specific member (used in AdminDiscussions member view)
+  const handleDeleteAllByMember = useCallback(async (userId: string | undefined, authorName: string) => {
+    // allow in adminContext (Admin UI) or when actual admin
+    if (!(adminContext || isAdmin)) return;
+    if (!authorFilter) return; // only allow in filtered member view
+
+    const confirmMsg = `Delete ALL posts by ${authorName}? This cannot be undone.`;
+    const ok = typeof window !== 'undefined' ? window.confirm(confirmMsg) : true;
+    if (!ok) return;
+
+    try {
+      // Delete on server first
+      let query = supabase.from('discussions').delete();
+      if (userId) {
+        query = query.eq('user_id', userId);
+      } else {
+        query = query.eq('author_name', authorFilter);
+      }
+      const { data, error } = await query.select('id, user_id, author_name');
+
+      if (error) {
+        console.error('❌ Failed to delete all posts by member:', error);
+        toast({ title: 'Error', description: 'Failed to delete all posts by this member.', variant: 'destructive' });
+        return;
+      }
+
+      // Update UI
+      setDiscussionsList(prev => prev.filter(d => {
+        if (userId) return d.user_id !== userId;
+        // fallback by author name
+        return (d.author || '').trim() !== (authorFilter || '').trim();
+      }));
+
+      const deletedCount = data?.length ?? 0;
+      toast({ title: 'Deleted', description: `Removed ${deletedCount} post${deletedCount === 1 ? '' : 's'} by ${authorName}.` });
+    } catch (err) {
+      console.error('❌ Exception deleting all posts by member:', err);
+      toast({ title: 'Error', description: 'There was an error deleting posts.', variant: 'destructive' });
+    }
+  }, [isAdmin, adminContext, authorFilter, toast]);
+
   const canEditOrDelete = useCallback((discussion: Discussion) => {
-    // Admins can edit/delete any post
-    if (isAdmin) return true;
-    // Users can only edit/delete their own posts
+    // Users can always edit/delete their own posts
     if (user && discussion.user_id === user.id) return true;
+    // In Admin UI context, always allow moderation controls (dev bypass supported)
+    if (adminContext) return true;
     return false;
-  }, [isAdmin, user]);
+  }, [user, adminContext]);
 
   const canPin = useCallback((discussion: Discussion) => {
     // Admins can pin/unpin posts. By default only admin-authored posts are pinnable.
@@ -617,7 +703,7 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
                             )}
                             
                             {/* Options Menu */}
-                            {canEditOrDelete(discussion) && (
+                            {(adminContext || (user && discussion.user_id === user.id)) && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-400 hover:text-white">
@@ -625,16 +711,20 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="bg-slate-800 border-gray-700">
-                                  <DropdownMenuItem 
-                                    onClick={() => {
-                                      setEditingPost(discussion.id);
-                                      setEditContent(discussion.content);
-                                    }}
-                                    className="text-gray-300 hover:text-white hover:bg-slate-700 cursor-pointer"
-                                  >
-                                    <Edit className="h-4 w-4 mr-2" />
-                                    Edit
-                                  </DropdownMenuItem>
+                                  {/* Edit: only show in user discussion (owner) and NOT in admin view */}
+                                  {(!adminContext && user && discussion.user_id === user.id) && (
+                                    <DropdownMenuItem 
+                                      onClick={() => {
+                                        setEditingPost(discussion.id);
+                                        setEditContent(discussion.content);
+                                        setEditTitle(discussion.title);
+                                      }}
+                                      className="text-gray-300 hover:text-white hover:bg-slate-700 cursor-pointer"
+                                    >
+                                      <Edit className="h-4 w-4 mr-2" />
+                                      Edit
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem 
                                     onClick={() => {
                                       console.log('🗑️ DELETE BUTTON CLICKED for discussion:', discussion.id);
@@ -651,44 +741,83 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
                           </div>
                         </div>
 
-                        <h3 className={`text-xl font-semibold mb-3 ${isDayMode ? 'text-slate-700' : 'text-white'}`}>
-                          {(() => {
-                            const href = titleLinkOverrides?.[discussion.title];
-                            if (href) {
-                              return (
-                                <a
-                                  href={href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-cyan-300 hover:text-cyan-200 hover:underline"
-                                >
-                                  {discussion.title}
-                                </a>
-                              );
-                            }
-                            return discussion.title;
-                          })()}
-                        </h3>
+                        {editingPost === discussion.id ? (
+                          <div className="mb-3">
+                            <Input
+                              value={editTitle}
+                              onChange={(e) => setEditTitle(e.target.value)}
+                              className="bg-slate-700/50 border-gray-600 text-white placeholder-gray-400"
+                              placeholder="Update title..."
+                            />
+                          </div>
+                        ) : (
+                          <h3 className={`text-xl font-semibold mb-3 ${isDayMode ? 'text-slate-700' : 'text-white'}`}>
+                            {(() => {
+                              const href = titleLinkOverrides?.[discussion.title];
+                              if (href) {
+                                return (
+                                  <a
+                                    href={href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-cyan-300 hover:text-cyan-200 hover:underline"
+                                  >
+                                    {discussion.title}
+                                  </a>
+                                );
+                              }
+                              return discussion.title;
+                            })()}
+                          </h3>
+                        )}
 
-                        <div 
-                          className={`mb-4 leading-relaxed whitespace-pre-wrap cursor-pointer transition-colors ${
-                            isDayMode ? 'text-slate-600 hover:text-slate-700' : 'text-gray-300 hover:text-gray-200'
-                          }`}
-                          onClick={() => setExpandedPost(expandedPost === discussion.id ? null : discussion.id)}
-                        >
-                          {(() => {
-                            const cleaned = discussion.isSkoolHighlight
-                              ? discussion.content.replace(/^🟦\s*Skool\s*Highlight\s*\n\n?/i, '')
-                              : discussion.content;
-                            return expandedPost === discussion.id ? cleaned : getTruncatedContent(cleaned);
-                          })()}
-                          {discussion.content.length > 150 && expandedPost !== discussion.id && (
-                            <span className="text-cyan-400 ml-2 font-medium">Read more</span>
-                          )}
-                          {expandedPost === discussion.id && discussion.content.length > 150 && (
-                            <span className="text-cyan-400 ml-2 font-medium">Show less</span>
-                          )}
-                        </div>
+                        {editingPost === discussion.id ? (
+                          <div className="mb-4 space-y-3">
+                            <Textarea
+                              value={editContent}
+                              onChange={(e) => setEditContent(e.target.value)}
+                              className="min-h-[120px] bg-slate-700/50 border-gray-600 text-white placeholder-gray-400"
+                              placeholder="Update your post..."
+                            />
+                            <div className="flex items-center gap-2">
+                              <Button
+                                onClick={() => handleSaveEdit(discussion.id)}
+                                disabled={isSavingEdit || !editContent.trim()}
+                                className="bg-cyan-600 hover:bg-cyan-700 text-white"
+                              >
+                                {isSavingEdit ? 'Saving…' : 'Save'}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                onClick={handleCancelEdit}
+                                disabled={isSavingEdit}
+                                className="text-gray-300 hover:text-white"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div 
+                            className={`mb-4 leading-relaxed whitespace-pre-wrap cursor-pointer transition-colors ${
+                              isDayMode ? 'text-slate-600 hover:text-slate-700' : 'text-gray-300 hover:text-gray-200'
+                            }`}
+                            onClick={() => setExpandedPost(expandedPost === discussion.id ? null : discussion.id)}
+                          >
+                            {(() => {
+                              const cleaned = discussion.isSkoolHighlight
+                                ? discussion.content.replace(/^🟦\s*Skool\s*Highlight\s*\n\n?/i, '')
+                                : discussion.content;
+                              return expandedPost === discussion.id ? cleaned : getTruncatedContent(cleaned);
+                            })()}
+                            {discussion.content.length > 150 && expandedPost !== discussion.id && (
+                              <span className="text-cyan-400 ml-2 font-medium">Read more</span>
+                            )}
+                            {expandedPost === discussion.id && discussion.content.length > 150 && (
+                              <span className="text-cyan-400 ml-2 font-medium">Show less</span>
+                            )}
+                          </div>
+                        )}
 
                         <div className="flex items-center gap-6">
                           <Button 
