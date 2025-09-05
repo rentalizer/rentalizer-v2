@@ -555,17 +555,18 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
   }, [isAdmin, adminContext, authorFilter, toast]);
 
   const canEditOrDelete = useCallback((discussion: Discussion) => {
-    // Users can always edit/delete their own posts
+    // Admins can manage any post, even on regular discussion page
+    if (isAdmin || adminContext) return true;
+    // Users can manage their own posts
     if (user && discussion.user_id === user.id) return true;
-    // In Admin UI context, always allow moderation controls (dev bypass supported)
-    if (adminContext) return true;
     return false;
-  }, [user, adminContext]);
+  }, [isAdmin, adminContext, user]);
 
   const canPin = useCallback((discussion: Discussion) => {
-    // Admins can pin/unpin posts. By default only admin-authored posts are pinnable.
-    // If allowAdminPinAll is true, admins can pin any post (used in Admin views).
+    // Allow admins to pin any post anywhere
     if (!(isAdmin || adminCanPin)) return false;
+    if (isAdmin) return true;
+    // For non-admin elevated contexts, respect flag or author-only rule
     return allowAdminPinAll ? true : isAdminPost(discussion);
   }, [isAdmin, isAdminPost, allowAdminPinAll, adminCanPin]);
 
@@ -703,7 +704,7 @@ export const GroupDiscussions = ({ isDayMode = false, disablePosting = false, fo
                             )}
                             
                             {/* Options Menu */}
-                            {(adminContext || (user && discussion.user_id === user.id)) && (
+                            {(adminContext || isAdmin || (user && discussion.user_id === user.id)) && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-400 hover:text-white">

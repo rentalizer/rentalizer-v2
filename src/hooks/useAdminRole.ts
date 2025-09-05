@@ -40,15 +40,37 @@ export const useAdminRole = () => {
 
       // Check actual admin role in database
       try {
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .eq('role', 'admin')
-          .maybeSingle();
-        
-        setIsAdmin(!!roleData);
+        // First attempt: filter by role at the DB
+        let isAdminDetected = false;
+        try {
+          const { data: roleData, error } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id)
+            .eq('role', 'admin')
+            .maybeSingle();
+          if (!error && roleData) {
+            isAdminDetected = true;
+          }
+        } catch (e) {
+          // fall through to retry without role filter
+          console.warn('useAdminRole: first role check failed, retrying without role filter', e);
+        }
+
+        if (!isAdminDetected) {
+          // Retry: fetch roles for the user (avoids potential policy recursion issues)
+          const { data: roles, error: rolesErr } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', user.id);
+          if (!rolesErr && Array.isArray(roles)) {
+            isAdminDetected = roles.some((r: { role: string }) => (r.role || '').toLowerCase() === 'admin');
+          }
+        }
+
+        setIsAdmin(isAdminDetected);
       } catch (error) {
+        console.error('useAdminRole: role check error', error);
         setIsAdmin(false);
       }
       
